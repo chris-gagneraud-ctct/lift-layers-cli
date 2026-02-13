@@ -1,7 +1,0 @@
-namespace lift_layers;
-
-table CreateLiftLayersDesignRequest {
-    path: string;
-}
-
-root_type CreateLiftLayersDesignRequest;

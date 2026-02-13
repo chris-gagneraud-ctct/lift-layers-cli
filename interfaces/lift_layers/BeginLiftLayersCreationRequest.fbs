@@ -1,5 +1,0 @@
-namespace lift_layers;
-
-table BeginLiftLayersCreationRequest { }
-
-root_type BeginLiftLayersCreationRequest;

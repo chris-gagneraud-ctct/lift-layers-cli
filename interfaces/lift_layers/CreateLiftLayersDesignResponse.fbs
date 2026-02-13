@@ -1,9 +1,0 @@
-include "LiftLayers.fbs";
-
-namespace lift_layers;
-
-table CreateLiftLayersDesignResponse {
-    error: CreateLiftLayersDesignError;
-}
-
-root_type CreateLiftLayersDesignResponse;
