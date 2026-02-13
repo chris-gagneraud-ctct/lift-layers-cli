@@ -1,0 +1,7 @@
+namespace lift_layers;
+
+table UpdateSurfaceLayersResponse {
+    success: bool;
+}
+
+root_type UpdateSurfaceLayersResponse;

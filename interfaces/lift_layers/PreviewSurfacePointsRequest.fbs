@@ -1,0 +1,11 @@
+include "Math.fbs";
+include "LiftLayers.fbs";
+
+namespace lift_layers;
+
+table PreviewSurfacePointsRequest {
+    preview_origin: Math.Coord3D;
+    preview_heading: double;
+}
+
+root_type PreviewSurfacePointsRequest;

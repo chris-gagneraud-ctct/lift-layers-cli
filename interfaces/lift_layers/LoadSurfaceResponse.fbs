@@ -1,0 +1,9 @@
+include "LiftLayers.fbs";
+
+namespace lift_layers;
+
+table LoadSurfaceResponse {
+    error: LoadSurfaceError;
+}
+
+root_type LoadSurfaceResponse;

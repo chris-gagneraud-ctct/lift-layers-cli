@@ -1,0 +1,14 @@
+include "Math.fbs";
+include "LiftLayers.fbs";
+
+namespace lift_layers;
+
+table UpdateSurfaceLayersRequest {
+    variant: LiftLayerSurfaceVariant;
+
+    // The requested "starting elevation" for the surface variant at that Northing/Easting
+    reference_position: Math.Coord3D;
+    layer_thickness: double;
+}
+
+root_type UpdateSurfaceLayersRequest;

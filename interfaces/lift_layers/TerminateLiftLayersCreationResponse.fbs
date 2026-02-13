@@ -1,0 +1,5 @@
+namespace lift_layers;
+
+table TerminateLiftLayersCreationResponse { }
+
+root_type TerminateLiftLayersCreationResponse;

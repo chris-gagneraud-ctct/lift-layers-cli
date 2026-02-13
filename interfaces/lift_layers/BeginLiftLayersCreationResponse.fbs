@@ -1,0 +1,8 @@
+namespace lift_layers;
+
+table BeginLiftLayersCreationResponse {
+    topic_identifier: string;
+}
+
+root_type BeginLiftLayersCreationResponse;
+
