@@ -13,23 +13,26 @@ import websocket
 
 # Web proxy settings
 DEFAULT_HOST = "localhost:9443"
-DEFAULT_USERNAME = "admin"
-DEFAULT_PASSWORD = "Admin11@"
-
-API_ENDPOINT = "/api/mosaic/"
-LOGIN_ENDPOINT = API_ENDPOINT + "login"
-LOGOUT_ENDPOINT = API_ENDPOINT + "logout/"
-OAUTH_LOGIN_URLS_ENDPOINT = API_ENDPOINT + "oauthloginurls"
-LIST_MESSAGES_ENDPOINT = API_ENDPOINT + "listmessages"
-LIST_REQUESTS_ENDPOINT = API_ENDPOINT + "listrequests"
-REQUEST_SENDER_ENDPOINT = API_ENDPOINT + "requestsender/"
+API_BASE_PATH = "/api/mosaic/"
+LOGIN_ENDPOINT = API_BASE_PATH + "login"
+LOGOUT_ENDPOINT = API_BASE_PATH + "logout/"
+OAUTH_LOGIN_URLS_ENDPOINT = API_BASE_PATH + "oauthloginurls"
+REQUEST_SENDER_ENDPOINT = API_BASE_PATH + "requestsender/"
 
 
 class HttpClient:
+    """
+    Thin wrapper around `requests.Session` for simplified HTTP(S) requests.
+
+    This class is intended for developer convenience, providing basic GET and POST
+    methods with automatic base URL handling and session management. It disables
+    SSL verification to allow connections to servers with self-signed certificates.
+    """
+
     def __init__(self, base_url: str):
         self.base_url = base_url
         self.session = requests.Session()
-        self.session.verify = False  # Accept self-signed certificates
+        self.session.verify = False
 
     def get(self, endpoint: str, params=None, headers=None) -> requests.Response:
         url = f"{self.base_url}{endpoint}"
@@ -46,19 +49,23 @@ class HttpClient:
 
 
 class LiftLayerClient:
+    """
+    Client for interacting with the Mosaic 'Lift Layers' component over WebSocket.
 
-    def __init__(self, host_port: str, username: str, password: str, verbose=False, dry_run=False):
+    This class provides high-level methods to manage lift layers sessions, create and load designs,
+    and interact with surfaces via the Mosaic API. It communicates using WebSocket with the Web Proxy.
+    Authentication with OAuth using the link provided by the Web Proxy.
+    """
+
+    def __init__(self, host_port: str, verbose=False, dry_run=False):
         self.http_url = f"https://{host_port}"
         self.ws_url = f"wss://{host_port}"
         self.ws_namespace = "lift_layers"
-        self.username = username
-        self.password = password
         self.verbose = verbose or dry_run
         self.dry_run = dry_run
         self.http_client = None
         self.lift_layer_session_id = None
 
-    # TODO: Allow login with username/password
     def login(self):
         if self.dry_run:
             print(f"Would log using OAuth link from {OAUTH_LOGIN_URLS_ENDPOINT}")
@@ -218,7 +225,6 @@ class LiftLayerClient:
         return payload["message"]
 
 
-
 if __name__ == "__main__":
     commands_help = """
 Available commands:
@@ -310,7 +316,7 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
         logging.getLogger("urllib3").setLevel(logging.DEBUG)
         websocket.enableTrace(True)
 
-    client = LiftLayerClient(DEFAULT_HOST, DEFAULT_USERNAME, DEFAULT_PASSWORD, verbose=args.verbose >= 1, dry_run=args.dry_run)
+    client = LiftLayerClient(host_port=args.host, verbose=args.verbose >= 1, dry_run=args.dry_run)
     client.login()
     client.begin_session()
     exit_code = 1
@@ -322,4 +328,5 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
     finally:
         client.end_session()
         client.logout()
+
     sys.exit(exit_code)
