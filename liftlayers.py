@@ -3,11 +3,12 @@
 import argparse
 import json
 import logging
+import random
 import requests
 import ssl
 import sys
-import websocket
 import urllib3
+import websocket
 
 
 # Web proxy settings
@@ -46,18 +47,22 @@ class HttpClient:
 
 class LiftLayerClient:
 
-    def __init__(self, host_port: str, username: str, password: str, verbose=False):
+    def __init__(self, host_port: str, username: str, password: str, verbose=False, dry_run=False):
         self.http_url = f"https://{host_port}"
         self.ws_url = f"wss://{host_port}"
         self.ws_namespace = "lift_layers"
         self.username = username
         self.password = password
-        self.verbose = verbose
+        self.verbose = verbose or dry_run
+        self.dry_run = dry_run
         self.http_client = None
         self.lift_layer_session_id = None
 
     # TODO: Allow login with username/password
     def login(self):
+        if self.dry_run:
+            print(f"Would log using OAuth link from {OAUTH_LOGIN_URLS_ENDPOINT}")
+            return
         assert self.http_client is None
         self.http_client = HttpClient(self.http_url)
         response = self.http_client.get(OAUTH_LOGIN_URLS_ENDPOINT)
@@ -69,6 +74,9 @@ class LiftLayerClient:
             print("Logged in successfully using OAuth link")
 
     def logout(self):
+        if self.dry_run:
+            print(f"Would log out by calling {LOGOUT_ENDPOINT}")
+            return
         assert self.http_client is not None
         response = self.http_client.get(LOGOUT_ENDPOINT)
         response.raise_for_status()
@@ -80,7 +88,10 @@ class LiftLayerClient:
     def begin_session(self):
         assert self.lift_layer_session_id is None
         message = self._send_request("BeginLiftLayersCreationRequest", "begin_lift_layer_creation_server", {})
-        self.lift_layer_session_id = message["topic_identifier"]
+        if self.dry_run:
+            self.lift_layer_session_id = "dummy-server-uuid"
+        else:
+            self.lift_layer_session_id = message["topic_identifier"]
 
     def end_session(self):
         assert self.lift_layer_session_id is not None
@@ -90,6 +101,8 @@ class LiftLayerClient:
     def create_design(self, path: str):
         assert self.lift_layer_session_id is not None
         message = self._send_request("CreateLiftLayersDesignRequest", self.lift_layer_session_id, {"path": path})
+        if self.dry_run:
+            return
         error = message.get("error")
         if error != "eSuccess":
             raise Exception(f"CreateLiftLayersDesignRequest: error={error}")
@@ -105,6 +118,8 @@ class LiftLayerClient:
                 "surface": surface_name
             }
         })
+        if self.dry_run:
+            return
         error = message.get("error")
         if error != "eSuccess":
             raise Exception(f"LoadSurfaceRequest: error={error}")
@@ -120,6 +135,8 @@ class LiftLayerClient:
                 "cross_slope": cross_slope
             }
         })
+        if self.dry_run:
+            return
         error = message.get("error")
         if error != "eSuccess":
             raise Exception(f"LoadSurfaceRequest: error={error}")
@@ -132,6 +149,8 @@ class LiftLayerClient:
             "surface_type": "NoSurfaceSelected",
             "surface": {}
         })
+        if self.dry_run:
+            return
         error = message.get("error")
         if error != "eSuccess":
             raise Exception(f"LoadSurfaceRequest: error={error}")
@@ -147,6 +166,8 @@ class LiftLayerClient:
             },
             "layer_thickness": thickness
         })
+        if self.dry_run:
+            return
         success = message.get("success")
         if not success:
             raise Exception(f"UpdateSurfaceLayersRequest: success={success}")
@@ -161,6 +182,8 @@ class LiftLayerClient:
             },
             "preview_heading": heading
         })
+        if self.dry_run:
+            return
         success = message.get("success")
         if not success:
             raise Exception(f"PreviewSurfacePointsRequest: success={success}")
@@ -176,16 +199,18 @@ class LiftLayerClient:
         return websocket.create_connection(url, cookie=cookie_header, sslopt=ssl_options)
 
     def _send_request(self, request: str, topic: str, message: dict) -> dict:
-        assert self.http_client is not None
-        url = self._get_sender_endpoint(request, topic)
-        ws = self._get_websocket(url)
         payload = json.dumps({
-            "uuid": "123e4567-e89b-12d3-a456-426614174003",
+            "uuid": f"lift-layers-cli-{str(random.randint(100000, 999999))}",
             "request_type": "stream",
             "message": message
         })
         if self.verbose:
             print(f"-> [{request}/{topic}] {payload}")
+        if self.dry_run:
+            return {}
+        assert self.http_client is not None
+        url = self._get_sender_endpoint(request, topic)
+        ws = self._get_websocket(url)
         ws.send(payload)
         payload = json.loads(ws.recv())
         if self.verbose:
@@ -213,8 +238,10 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
     parser.add_argument('-H', '--host', metavar='HOST:PORT',
                         help=f'Host and port (default to {DEFAULT_HOST})',
                         default=f"{DEFAULT_HOST}")
-    parser.add_argument('-v', '--verbose', action='store_true',
-                        help='Enable verbose output')
+    parser.add_argument('-v', '--verbose', action='count', default=0,
+                        help='Be verbose. Use -v to show Mosaic messages, -vv to also show WebSocket frames and HTTP requests.')
+    parser.add_argument('-d', '--dry-run', action='store_true', default=False,
+                        help='Do not execute commands, just print what would be done (implies -v)')
     parser.add_argument('command',
                         help='Command to execute')
     parser.add_argument('args', nargs=argparse.REMAINDER,
@@ -222,24 +249,19 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
     args = parser.parse_args()
 
     host = args.host
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG)
-        logging.getLogger("urllib3").setLevel(logging.DEBUG)
-        websocket.enableTrace(True)
-    client = LiftLayerClient(DEFAULT_HOST, DEFAULT_USERNAME, DEFAULT_PASSWORD)
     function = None
     kwargs = {}
     if args.command == "create_design":
         if len(args.args) != 1:
             print("Usage: create_design <design_path>")
             sys.exit(1)
-        function = client.create_design
+        function = LiftLayerClient.create_design
         kwargs["path"] = args.args[0]
     elif args.command == "load_design_surface":
         if len(args.args) != 3:
             print("Usage: load_design_surface <surface_type> <design_path> <surface_name>")
             sys.exit(1)
-        function = client.load_design_surface
+        function = LiftLayerClient.load_design_surface
         kwargs["surface_type"] = args.args[0]
         kwargs["design_path"] = args.args[1]
         kwargs["surface_name"] = args.args[2]
@@ -247,7 +269,7 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
         if len(args.args) != 4:
             print("Usage: load_quick_slope_surface <surface_type> <heading> <mainfall> <cross_slope>")
             sys.exit(1)
-        function = client.load_quick_slope_surface
+        function = LiftLayerClient.load_quick_slope_surface
         kwargs["surface_type"] = args.args[0]
         kwargs["heading"] = float(args.args[1])
         kwargs["mainfall"] = float(args.args[2])
@@ -256,13 +278,13 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
         if len(args.args) != 1:
             print("Usage: unload_surface <surface_type>")
             sys.exit(1)
-        function = client.unload_surface
+        function = LiftLayerClient.unload_surface
         kwargs["surface_type"] = args.args[0]
     elif args.command == "update_surface":
         if len(args.args) != 5:
             print("Usage: update_surface <surface_type> <x> <y> <z> <thickness>")
             sys.exit(1)
-        function = client.update_surface
+        function = LiftLayerClient.update_surface
         kwargs["surface_type"] = args.args[0]
         kwargs["x"] = float(args.args[1])
         kwargs["y"] = float(args.args[2])
@@ -272,7 +294,7 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
         if len(args.args) != 4:
             print("Usage: preview_surface <x> <y> <z> <heading>")
             sys.exit(1)
-        function = client.preview_surface
+        function = LiftLayerClient.preview_surface
         kwargs["x"] = float(args.args[0])
         kwargs["y"] = float(args.args[1])
         kwargs["z"] = float(args.args[2])
@@ -282,11 +304,18 @@ Where surface_type can be "eCritical", "eCut" or "eFill"
         sys.exit(1)
 
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+    if args.verbose >= 2:
+        logging.basicConfig(level=logging.DEBUG)
+        logging.getLogger("urllib3").setLevel(logging.DEBUG)
+        websocket.enableTrace(True)
+
+    client = LiftLayerClient(DEFAULT_HOST, DEFAULT_USERNAME, DEFAULT_PASSWORD, verbose=args.verbose >= 1, dry_run=args.dry_run)
     client.login()
     client.begin_session()
     exit_code = 1
     try:
-        function(**kwargs)
+        function(client, **kwargs)
         exit_code = 0
     except Exception as e:
         print(f"Error executing request: {e}")
